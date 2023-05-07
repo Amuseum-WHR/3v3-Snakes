@@ -8,7 +8,7 @@ from torch.distributions import Categorical
 import os
 import yaml
 
-device = torch.device("cuda:1") if torch.cuda.is_available() else torch.device("cpu")
+device = torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
 
 
 def hard_update(source, target):
@@ -80,7 +80,7 @@ def greedy_snake(state_map, beans, snakes, width, height, ctrl_agent_index):
     for i in ctrl_agent_index:
         head_x = snakes[i][0][1]
         head_y = snakes[i][0][0]
-        head_surrounding = get_surrounding(state_map, width, height, head_x, head_y)
+        head_surrounding = get_surrounding2(state_map, width, height, head_x, head_y)
         bean_x, bean_y, index = get_min_bean(head_x, head_y, beans_position)
         beans_position.pop(index)
 
@@ -105,6 +105,40 @@ def greedy_snake(state_map, beans, snakes, width, height, ctrl_agent_index):
 # Head surroundings:    2:head_up; 3:head_down; 4:head_left; 5:head_right
 # Beans positions:      (6, 7) (8, 9) (10, 11) (12, 13) (14, 15)
 # Other snake positions: (16, 17) (18, 19) (20, 21) (22, 23) (24, 25) -- (other_x - self_x, other_y - self_y)
+# def get_observations(state, agents_index, obs_dim, height, width):
+#     state_copy = state.copy()
+#     board_width = state_copy['board_width']
+#     board_height = state_copy['board_height']
+#     beans_positions = state_copy[1]
+#     snakes_positions = {key: state_copy[key] for key in state_copy.keys() & {2, 3, 4, 5, 6, 7}}
+#     snakes_positions_list = []
+#     for key, value in snakes_positions.items():
+#         snakes_positions_list.append(value)
+#     snake_map = make_grid_map(board_width, board_height, beans_positions, snakes_positions)
+#     state_ = np.array(snake_map)
+#     state = np.squeeze(state_, axis=2)
+
+#     observations = np.zeros((3, obs_dim))
+#     snakes_position = np.array(snakes_positions_list, dtype=object)
+#     beans_position = np.array(beans_positions, dtype=object).flatten()
+#     for i in agents_index:
+#         # self head position
+#         observations[i][:2] = snakes_position[i][0][:]
+
+#         # head surroundings
+#         head_x = snakes_position[i][0][1]
+#         head_y = snakes_position[i][0][0]
+#         head_surrounding = get_surrounding(state, width, height, head_x, head_y)
+#         observations[i][2:6] = head_surrounding[:]
+
+#         # beans positions
+#         observations[i][6:16] = beans_position[:]
+
+#         # other snake positions
+#         snake_heads = np.array([snake[0] for snake in snakes_position])
+#         snake_heads = np.delete(snake_heads, i, 0)
+#         observations[i][16:] = snake_heads.flatten()[:]
+#     return observations
 def get_observations(state, agents_index, obs_dim, height, width):
     state_copy = state.copy()
     board_width = state_copy['board_width']
@@ -116,28 +150,30 @@ def get_observations(state, agents_index, obs_dim, height, width):
         snakes_positions_list.append(value)
     snake_map = make_grid_map(board_width, board_height, beans_positions, snakes_positions)
     state_ = np.array(snake_map)
-    state = np.squeeze(state_, axis=2)
+    # print(state_)
+    state_ = np.squeeze(state_, axis=2)
 
     observations = np.zeros((3, obs_dim))
     snakes_position = np.array(snakes_positions_list, dtype=object)
     beans_position = np.array(beans_positions, dtype=object).flatten()
-    for i in agents_index:
-        # self head position
-        observations[i][:2] = snakes_position[i][0][:]
+    for i, element in enumerate(agents_index):
+        # # self head position
+        observations[i][:2] = snakes_positions_list[element][0][:]
 
         # head surroundings
-        head_x = snakes_position[i][0][1]
-        head_y = snakes_position[i][0][0]
-        head_surrounding = get_surrounding(state, width, height, head_x, head_y)
-        observations[i][2:6] = head_surrounding[:]
+        head_x = snakes_positions_list[element][0][1]
+        head_y = snakes_positions_list[element][0][0]
+
+        head_surrounding = get_surrounding(state_, width, height, head_x, head_y, element, state_copy)
+        observations[i][2:122] = head_surrounding[:]
 
         # beans positions
-        observations[i][6:16] = beans_position[:]
+        observations[i][122:132] = beans_position[:]
 
         # other snake positions
         snake_heads = np.array([snake[0] for snake in snakes_position])
         snake_heads = np.delete(snake_heads, i, 0)
-        observations[i][16:] = snake_heads.flatten()[:]
+        observations[i][132:] = snake_heads.flatten()[:]
     return observations
 
 
@@ -210,11 +246,52 @@ def logits_greedy(state, logits, height, width):
     return action_list
 
 
-def get_surrounding(state, width, height, x, y):
+def get_surrounding2(state, width, height, x, y):
     surrounding = [state[(y - 1) % height][x],  # up
                    state[(y + 1) % height][x],  # down
                    state[y][(x - 1) % width],  # left
                    state[y][(x + 1) % width]]  # right
+
+    return surrounding
+def get_surrounding(state, width, height, x, y, agent, info):
+
+    state = state.copy()
+    state[state>=2] = 2 # 是身子
+
+    for l in [2, 3, 4, 5, 6, 7]:
+        if agent + 2 == l:
+            state[info[l][0][0]][info[l][0][1]] = 3
+        else:
+            state[info[l][0][0]][info[l][0][1]] = 4
+
+    surrounding = np.zeros((24,5))
+
+    surrounding[0][state[(y - 2) % height][x]] = 1  # upup
+    surrounding[1][state[(y + 2) % height][x]] = 1
+    surrounding[2][state[y][(x - 2) % width]] = 1
+    surrounding[3][state[y][(x + 2) % width]] = 1
+    surrounding[4][state[(y - 1) % height][(x - 1) % width]] = 1
+    surrounding[5][state[(y - 1) % height][x]] = 1
+    surrounding[6][state[(y - 1) % height][(x + 1) % width]] = 1
+    surrounding[7][state[y][(x - 1) % width]] = 1
+    surrounding[8][state[y][(x + 1) % width]] = 1
+    surrounding[9][state[(y + 1) % height][(x - 1) % width]] = 1
+    surrounding[10][state[(y + 1) % height][x]] = 1
+    surrounding[11][state[(y + 1) % height][(x + 1) % width]] = 1
+    surrounding[12][state[(y - 3) % height][x]] = 1
+    surrounding[13][state[(y + 3) % height][x]] = 1
+    surrounding[14][state[y][(x - 3) % width]] = 1
+    surrounding[15][state[y][(x + 3) % width]] = 1
+    surrounding[16][state[(y - 2) % height][(x - 1) % width]] = 1
+    surrounding[17][state[(y - 2) % height][(x + 1) % width]] = 1
+    surrounding[18][state[(y + 2) % height][(x - 1) % width]] = 1
+    surrounding[19][state[(y + 2) % height][(x + 1) % width]] = 1
+    surrounding[20][state[(y - 1) % height][(x - 2) % width]] = 1
+    surrounding[21][state[(y - 1) % height][(x + 2) % width]] = 1
+    surrounding[22][state[(y + 1) % height][(x - 2) % width]] = 1
+    surrounding[23][state[(y + 1) % height][(x + 2) % width]] = 1
+
+    surrounding = list(surrounding.flatten().tolist())
 
     return surrounding
 

@@ -37,7 +37,7 @@ def main(args):
 
     act_dim = env.get_action_dim()
     print(f'action dimension: {act_dim}')
-    obs_dim = 26
+    obs_dim = 142
     print(f'observation dimension: {obs_dim}')
 
     torch.manual_seed(args.seed)
