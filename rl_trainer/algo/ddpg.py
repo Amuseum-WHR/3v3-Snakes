@@ -72,6 +72,8 @@ class DDPG:
         # Sample a greedy_min mini-batch of M transitions from R
         state_batch, action_batch, reward_batch, next_state_batch, done_batch = self.replay_buffer.get_batches()
 
+        # print(state_batch.shape) # (batch_size, num_agent, obs_dim)
+
         state_batch = torch.Tensor(state_batch).reshape(self.batch_size, self.num_agent, -1).to(self.device)
         action_batch = torch.Tensor(action_batch).reshape(self.batch_size, self.num_agent, -1).to(self.device)
         reward_batch = torch.Tensor(reward_batch).reshape(self.batch_size, self.num_agent, 1).to(self.device)
@@ -87,6 +89,8 @@ class DDPG:
         # Compute critic gradient estimation according to Eq.(8)
         main_q = self.critic(state_batch, action_batch)
         loss_critic = torch.nn.MSELoss()(q_hat, main_q)
+
+        # print(torch.max(main_q).item(), torch.max(reward_batch).item(), torch.mean(main_q).item(), torch.mean(reward_batch).item())
 
         # Update the critic networks based on Adam
         self.critic_optimizer.zero_grad()

@@ -40,11 +40,45 @@ def mlp(sizes,
     return nn.Sequential(*layers)
 
 
-def get_surrounding(state, width, height, x, y):
-    surrounding = [state[(y - 1) % height][x],  # up
-                   state[(y + 1) % height][x],  # down
-                   state[y][(x - 1) % width],  # left
-                   state[y][(x + 1) % width]]  # right
+def get_surrounding(state, width, height, x, y, agent, info):
+
+    state = state.copy()
+    state[state>=2] = 2 # 是身子
+
+    for l in [2, 3, 4, 5, 6, 7]:
+        if agent + 2 == l:
+            state[info[l][0][0]][info[l][0][1]] = 3
+        else:
+            state[info[l][0][0]][info[l][0][1]] = 4
+
+    surrounding = np.zeros((24,5))
+
+    surrounding[0][state[(y - 2) % height][x]] = 1  # upup
+    surrounding[1][state[(y + 2) % height][x]] = 1
+    surrounding[2][state[y][(x - 2) % width]] = 1
+    surrounding[3][state[y][(x + 2) % width]] = 1
+    surrounding[4][state[(y - 1) % height][(x - 1) % width]] = 1
+    surrounding[5][state[(y - 1) % height][x]] = 1
+    surrounding[6][state[(y - 1) % height][(x + 1) % width]] = 1
+    surrounding[7][state[y][(x - 1) % width]] = 1
+    surrounding[8][state[y][(x + 1) % width]] = 1
+    surrounding[9][state[(y + 1) % height][(x - 1) % width]] = 1
+    surrounding[10][state[(y + 1) % height][x]] = 1
+    surrounding[11][state[(y + 1) % height][(x + 1) % width]] = 1
+    surrounding[12][state[(y - 3) % height][x]] = 1
+    surrounding[13][state[(y + 3) % height][x]] = 1
+    surrounding[14][state[y][(x - 3) % width]] = 1
+    surrounding[15][state[y][(x + 3) % width]] = 1
+    surrounding[16][state[(y - 2) % height][(x - 1) % width]] = 1
+    surrounding[17][state[(y - 2) % height][(x + 1) % width]] = 1
+    surrounding[18][state[(y + 2) % height][(x - 1) % width]] = 1
+    surrounding[19][state[(y + 2) % height][(x + 1) % width]] = 1
+    surrounding[20][state[(y - 1) % height][(x - 2) % width]] = 1
+    surrounding[21][state[(y - 1) % height][(x + 2) % width]] = 1
+    surrounding[22][state[(y + 1) % height][(x - 2) % width]] = 1
+    surrounding[23][state[(y + 1) % height][(x + 2) % width]] = 1
+
+    surrounding = list(surrounding.flatten().tolist())
 
     return surrounding
 
@@ -89,40 +123,19 @@ def get_observations(state, agents_index, obs_dim, height, width):
         head_x = snakes_positions_list[element][0][1]
         head_y = snakes_positions_list[element][0][0]
 
-        head_surrounding = get_surrounding(state_, width, height, head_x, head_y)
-        observations[i][2:6] = head_surrounding[:]
+        head_surrounding = get_surrounding(state_, width, height, head_x, head_y, element, state_copy)
+        observations[i][2:122] = head_surrounding[:]
 
         # beans positions
-        observations[i][6:16] = beans_position[:]
+        observations[i][122:132] = beans_position[:]
 
         # other snake positions
         snake_heads = np.array([snake[0] for snake in snakes_position])
         snake_heads = np.delete(snake_heads, i, 0)
-        observations[i][16:] = snake_heads.flatten()[:]
+        observations[i][132:] = snake_heads.flatten()[:]
     return observations
 
 
-class Actor(nn.Module):
-    def __init__(self, obs_dim, act_dim, num_agents, args, output_activation='softmax'):
-        super().__init__()
-
-        self.obs_dim = obs_dim
-        self.act_dim = act_dim
-        self.num_agents = num_agents
-
-        self.args = args
-
-        sizes_prev = [obs_dim, HIDDEN_SIZE]
-        sizes_post = [HIDDEN_SIZE, HIDDEN_SIZE, act_dim]
-
-        self.prev_dense = mlp(sizes_prev)
-        self.post_dense = mlp(sizes_post, output_activation=output_activation)
-
-    def forward(self, obs_batch):
-        out = self.prev_dense(obs_batch)
-        out = self.post_dense(out)
-        return out
-    
 class DRQN(nn.Module):
 
     def __init__(self, obs_dim, act_dim, num_agents, args, output_activation='softmax'):
@@ -139,64 +152,6 @@ class DRQN(nn.Module):
         h = self.rnn(x, h_in)
         q = self.fc2(h)
         return q, h
-    
-
-class QMixNet(nn.Module):
-
-    def __init__(self, obs_dim, act_dim, num_agents, args, output_activation='softmax'):
-        super().__init__()
-
-        self.args = args
-        self.obs_dim = obs_dim
-        self.act_dim = act_dim
-        self.num_agents = num_agents
-
-        self.hyper_w1 = nn.Sequential(
-            nn.Linear(obs_dim + act_dim * num_agents, HYPPER_HIDDEN_SIZE),
-            nn.ReLU(),
-            nn.Linear(HYPPER_HIDDEN_SIZE, HIDDEN_SIZE)
-        )
-
-        self.hyper_w2 = nn.Sequential(
-            nn.Linear(obs_dim + act_dim * num_agents, HYPPER_HIDDEN_SIZE),
-            nn.ReLU(),
-            nn.Linear(HIDDEN_SIZE, HIDDEN_SIZE)
-        )
-
-        self.hyper_b1 = nn.Linear(obs_dim + act_dim * num_agents, HIDDEN_SIZE)
-        self.hyper_b2 = nn.Sequential(
-            nn.Linear(obs_dim + act_dim * num_agents, HIDDEN_SIZE),
-            nn.ReLU(),
-            nn.Linear(HIDDEN_SIZE, HIDDEN_SIZE)
-        )
-
-    def forward(self, q_values, states):
-        
-        episode_num = q_values.shape[0]
-        q_values = q_values.view(-1, 1, self.num_agents)
-        states = states.view(-1, self.obs_dim)
-
-        w1 = torch.abs(self.hyper_w1(states))
-        b1 = self.hyper_b1(states)
-        w1 = w1.view(-1, self.num_agents, QMIX_HIDDEN_SIZE)
-        b1 = b1.view(-1, 1, QMIX_HIDDEN_SIZE)
-
-        hidden = F.elu(torch.bmm(q_values, w1) + b1)
-
-        w2 = torch.abs(self.hyper_w2(states))
-        b2 = self.hyper_b2(states)
-        w2 = w2.view(-1, QMIX_HIDDEN_SIZE, 1)
-        b2 = b2.view(-1, 1, 1)
-
-        q_total = torch.bmm(hidden, w2) + b2
-        q_total = q_total.view(episode_num, -1, 1)
-
-        return q_total
-
-
-
-
-
 
 
 
@@ -207,18 +162,25 @@ class RLAgent(object):
         self.num_agent = num_agent
         self.device = device
         self.output_activation = 'softmax'
-        self.actor = Actor(obs_dim, act_dim, num_agent, self.output_activation).to(self.device)
+        self.actor = DRQN(obs_dim, act_dim, num_agent, self.output_activation).to(self.device)
+        self.hidden = None
 
     def choose_action(self, obs):
-        obs = torch.Tensor([obs]).to(self.device)
-        logits = self.actor(obs).cpu().detach().numpy()
-        # print(obs.shape, logits.shape)
-        logits = logits[0]
-        return logits
+
+        obs = torch.Tensor(obs).to(self.device)
+        # print(obs.shape)
+        # self.eval_hidden = self.eval_hidden[0].to(self.device)
+        q_value, self.hidden = self.actor(obs, self.hidden)
+
+        # action = np.zeros((self.num_agent, self.act_dim))
+        action = torch.argmax(q_value, dim=1).cpu().numpy()
+        return action
 
     def select_action_to_env(self, obs, ctrl_index):
-        logits = self.choose_action(obs)
-        actions = logits2action(logits)
+        actions = self.choose_action(obs)
+        # print(logits.shape)
+        # actions = logits2action(logits)
+        # print(actions)
         action_to_env = to_joint_action(actions, ctrl_index)
         return action_to_env
 
@@ -242,13 +204,14 @@ def logits2action(logits):
 
 
 
-agent = RLAgent(26, 4, 3)
-actor_net = os.path.dirname(os.path.abspath(__file__)) + "/actor_2000.pth"
+agent = RLAgent(142, 4, 3)
+actor_net = os.path.dirname(os.path.abspath(__file__)) + "/drqn_50000.pth"
 agent.load_model(actor_net)
+agent.hidden = torch.zeros(3, DRQN_HIDDEN_SIZE).to(device)
 
 
 def my_controller(observation_list, action_space_list, is_act_continuous):
-    obs_dim = 26
+    obs_dim = 142
     obs = observation_list.copy()
     board_width = obs['board_width']
     board_height = obs['board_height']

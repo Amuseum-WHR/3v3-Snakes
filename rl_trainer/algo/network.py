@@ -64,6 +64,7 @@ class Critic(nn.Module):
 
     def forward(self, obs_batch, action_batch):
         out = torch.cat((obs_batch, action_batch), dim=-1)
+        # print(out.shape)
         out = self.prev_dense(out)
 
         if self.args.algo == "bicnet":

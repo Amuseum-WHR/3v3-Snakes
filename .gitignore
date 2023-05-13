@@ -3,3 +3,4 @@
 */*/__pycache__/*
 logs/
 rl_trainer/models/
+*.pth

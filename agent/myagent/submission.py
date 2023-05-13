@@ -164,6 +164,7 @@ class RLAgent(object):
     def select_action_to_env(self, obs, ctrl_index):
         logits = self.choose_action(obs)
         actions = logits2action(logits)
+        print(actions.shape)
         action_to_env = to_joint_action(actions, ctrl_index)
         return action_to_env
 

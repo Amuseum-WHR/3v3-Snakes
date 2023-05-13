@@ -60,6 +60,8 @@ def main(args):
         # Receive initial observation state s1
         state = env.reset()
 
+        beans = env.beans_position.copy()
+
         # During training, since all agents are given the same obs, we take the state of 1st agent.
         # However, when evaluation in Jidi, each agent get its own state, like state[agent_index]: dict()
         # more details refer to https://github.com/jidiai/Competition_3v3snakes/blob/master/run_log.py#L68
@@ -70,6 +72,12 @@ def main(args):
         # since all snakes play independently, we choose first three snakes for training.
         # Then, the trained model can apply to other agents. ctrl_agent_index -> [0, 1, 2]
         # Noted, the index is different in obs. please refer to env description.
+        # print(state)
+        # [{1: [[9, 6], [7, 12], [6, 4], [9, 5], [1, 1]], 2: [[3, 10], [3, 9], [3, 8]], 3: [[3, 15], [2, 15], [1, 15]], 4: [[5, 1], [4, 1], [3, 1]], 5: [[3, 19], [4, 19], [5, 19]], 6: [[6, 14], [7, 14], [8, 14]], 7: [[7, 19], [8, 19], [9, 19]], 
+        #   'board_width': 20, 'board_height': 10, 'last_direction': None, 'controlled_snake_index': 2}, 
+        # {1: [[9, 6], [7, 12], [6, 4], [9, 5], [1, 1]], 2: [[3, 10], [3, 9], [3, 8]], 3: [[3, 15], [2, 15], [1, 15]], 4: [[5, 1], [4, 1], [3, 1]], 5: [[3, 19], [4, 19], [5, 19]], 6: [[6, 14], [7, 14], [8, 14]], 7: [[7, 19], [8, 19], [9, 19]], 'board_width': 20, 'board_height': 10, 'last_direction': None, 'controlled_snake_index': 3}, {1: [[9, 6], [7, 12], [6, 4], [9, 5], [1, 1]], 2: [[3, 10], [3, 9], [3, 8]], 3: [[3, 15], [2, 15], [1, 15]], 4: [[5, 1], [4, 1], [3, 1]], 5: [[3, 19], [4, 19], [5, 19]], 6: [[6, 14], [7, 14], [8, 14]], 7: [[7, 19], [8, 19], [9, 19]], 'board_width': 20, 'board_height': 10, 'last_direction': None, 'controlled_snake_index': 4}, {1: [[9, 6], [7, 12], [6, 4], [9, 5], [1, 1]], 2: [[3, 10], [3, 9], [3, 8]], 3: [[3, 15], [2, 15], [1, 15]], 4: [[5, 1], [4, 1], [3, 1]], 5: [[3, 19], [4, 19], [5, 19]], 6: [[6, 14], [7, 14], [8, 14]], 7: [[7, 19], [8, 19], [9, 19]], 'board_width': 20, 'board_height': 10, 'last_direction': None, 'controlled_snake_index': 5}, {1: [[9, 6], [7, 12], [6, 4], [9, 5], [1, 1]], 2: [[3, 10], [3, 9], [3, 8]], 3: [[3, 15], [2, 15], [1, 15]], 4: [[5, 1], [4, 1], [3, 1]], 5: [[3, 19], [4, 19], [5, 19]], 6: [[6, 14], [7, 14], [8, 14]], 7: [[7, 19], [8, 19], [9, 19]], 'board_width': 20, 'board_height': 10, 'last_direction': None, 'controlled_snake_index': 6}, 
+        # {1: [[9, 6], [7, 12], [6, 4], [9, 5], [1, 1]], 2: [[3, 10], [3, 9], [3, 8]], 3: [[3, 15], [2, 15], [1, 15]], 4: [[5, 1], [4, 1], [3, 1]], 5: [[3, 19], [4, 19], [5, 19]], 6: [[6, 14], [7, 14], [8, 14]], 7: [[7, 19], [8, 19], [9, 19]], 'board_width': 20, 'board_height': 10, 'last_direction': None, 'controlled_snake_index': 7}]
+
         obs = get_observations(state_to_training, ctrl_agent_index, obs_dim, height, width)
 
         episode += 1
@@ -95,31 +103,48 @@ def main(args):
             # ================================== reward shaping ========================================
             reward = np.array(reward)
             episode_reward += reward
+            # if done:
+            #     if np.sum(episode_reward[:3]) > np.sum(episode_reward[3:]):
+            #         step_reward = get_reward(info, ctrl_agent_index, reward, score=1)
+            #     elif np.sum(episode_reward[:3]) < np.sum(episode_reward[3:]):
+            #         step_reward = get_reward(info, ctrl_agent_index, reward, score=2)
+            #     else:
+            #         step_reward = get_reward(info, ctrl_agent_index, reward, score=0)
+            # else:
+            #     if np.sum(episode_reward[:3]) > np.sum(episode_reward[3:]):
+            #         step_reward = get_reward(info, ctrl_agent_index, reward, score=3)
+            #     elif np.sum(episode_reward[:3]) < np.sum(episode_reward[3:]):
+            #         step_reward = get_reward(info, ctrl_agent_index, reward, score=4)
+            #     else:
+            #         step_reward = get_reward(info, ctrl_agent_index, reward, score=0)
+
             if done:
                 if np.sum(episode_reward[:3]) > np.sum(episode_reward[3:]):
-                    step_reward = get_reward(info, ctrl_agent_index, reward, score=1)
+                    step_reward = get_dense_reward(info, ctrl_agent_index, reward, beans, score=1)
                 elif np.sum(episode_reward[:3]) < np.sum(episode_reward[3:]):
-                    step_reward = get_reward(info, ctrl_agent_index, reward, score=2)
+                    step_reward = get_dense_reward(info, ctrl_agent_index, reward, beans, score=2)
                 else:
-                    step_reward = get_reward(info, ctrl_agent_index, reward, score=0)
+                    step_reward = get_dense_reward(info, ctrl_agent_index, reward, beans, score=0)
             else:
                 if np.sum(episode_reward[:3]) > np.sum(episode_reward[3:]):
-                    step_reward = get_reward(info, ctrl_agent_index, reward, score=3)
+                    step_reward = get_dense_reward(info, ctrl_agent_index, reward, beans, score=3)
                 elif np.sum(episode_reward[:3]) < np.sum(episode_reward[3:]):
-                    step_reward = get_reward(info, ctrl_agent_index, reward, score=4)
+                    step_reward = get_dense_reward(info, ctrl_agent_index, reward, beans, score=4)
                 else:
-                    step_reward = get_reward(info, ctrl_agent_index, reward, score=0)
+                    step_reward = get_dense_reward(info, ctrl_agent_index, reward, beans, score=0)
 
             done = np.array([done] * ctrl_agent_num)
 
             # ================================== collect data ========================================
             # Store transition in R
+            # print(obs.shape) (3, 142) -> (num_agents, obs.shape)
             model.replay_buffer.push(obs, logits, step_reward, next_obs, done)
 
             model.update()
 
             obs = next_obs
             state_to_training = next_state_to_training
+            beans = info['beans_position']
             step += 1
 
             if args.episode_length <= step or (True in done):
@@ -144,6 +169,7 @@ def main(args):
                     model.save_model(run_dir, episode)
 
                 env.reset()
+                beans = env.beans_position.copy()
                 break
 
 

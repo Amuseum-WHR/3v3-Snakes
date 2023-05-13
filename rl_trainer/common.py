@@ -105,40 +105,40 @@ def greedy_snake(state_map, beans, snakes, width, height, ctrl_agent_index):
 # Head surroundings:    2:head_up; 3:head_down; 4:head_left; 5:head_right
 # Beans positions:      (6, 7) (8, 9) (10, 11) (12, 13) (14, 15)
 # Other snake positions: (16, 17) (18, 19) (20, 21) (22, 23) (24, 25) -- (other_x - self_x, other_y - self_y)
-# def get_observations(state, agents_index, obs_dim, height, width):
-#     state_copy = state.copy()
-#     board_width = state_copy['board_width']
-#     board_height = state_copy['board_height']
-#     beans_positions = state_copy[1]
-#     snakes_positions = {key: state_copy[key] for key in state_copy.keys() & {2, 3, 4, 5, 6, 7}}
-#     snakes_positions_list = []
-#     for key, value in snakes_positions.items():
-#         snakes_positions_list.append(value)
-#     snake_map = make_grid_map(board_width, board_height, beans_positions, snakes_positions)
-#     state_ = np.array(snake_map)
-#     state = np.squeeze(state_, axis=2)
+def get_observations2(state, agents_index, obs_dim, height, width):
+    state_copy = state.copy()
+    board_width = state_copy['board_width']
+    board_height = state_copy['board_height']
+    beans_positions = state_copy[1]
+    snakes_positions = {key: state_copy[key] for key in state_copy.keys() & {2, 3, 4, 5, 6, 7}}
+    snakes_positions_list = []
+    for key, value in snakes_positions.items():
+        snakes_positions_list.append(value)
+    snake_map = make_grid_map(board_width, board_height, beans_positions, snakes_positions)
+    state_ = np.array(snake_map)
+    state = np.squeeze(state_, axis=2)
 
-#     observations = np.zeros((3, obs_dim))
-#     snakes_position = np.array(snakes_positions_list, dtype=object)
-#     beans_position = np.array(beans_positions, dtype=object).flatten()
-#     for i in agents_index:
-#         # self head position
-#         observations[i][:2] = snakes_position[i][0][:]
+    observations = np.zeros((3, obs_dim))
+    snakes_position = np.array(snakes_positions_list, dtype=object)
+    beans_position = np.array(beans_positions, dtype=object).flatten()
+    for i in agents_index:
+        # self head position
+        observations[i][:2] = snakes_position[i][0][:]
 
-#         # head surroundings
-#         head_x = snakes_position[i][0][1]
-#         head_y = snakes_position[i][0][0]
-#         head_surrounding = get_surrounding(state, width, height, head_x, head_y)
-#         observations[i][2:6] = head_surrounding[:]
+        # head surroundings
+        head_x = snakes_position[i][0][1]
+        head_y = snakes_position[i][0][0]
+        head_surrounding = get_surrounding2(state, width, height, head_x, head_y)
+        observations[i][2:6] = head_surrounding[:]
 
-#         # beans positions
-#         observations[i][6:16] = beans_position[:]
+        # beans positions
+        observations[i][6:16] = beans_position[:]
 
-#         # other snake positions
-#         snake_heads = np.array([snake[0] for snake in snakes_position])
-#         snake_heads = np.delete(snake_heads, i, 0)
-#         observations[i][16:] = snake_heads.flatten()[:]
-#     return observations
+        # other snake positions
+        snake_heads = np.array([snake[0] for snake in snakes_position])
+        snake_heads = np.delete(snake_heads, i, 0)
+        observations[i][16:] = snake_heads.flatten()[:]
+    return observations
 def get_observations(state, agents_index, obs_dim, height, width):
     state_copy = state.copy()
     board_width = state_copy['board_width']
@@ -176,6 +176,30 @@ def get_observations(state, agents_index, obs_dim, height, width):
         observations[i][132:] = snake_heads.flatten()[:]
     return observations
 
+def manhattan(x,y,bean_x,bean_y,width,height):
+    if abs(x-bean_x)>abs(width - abs(x - bean_x)):
+        d_x=abs(width - abs(x - bean_x))
+        if x>bean_x:
+            ind_x=bean_x+width
+        else:
+            ind_x=bean_x-width
+    else:
+        d_x=abs(x-bean_x)
+        ind_x=bean_x
+
+    if abs(y-bean_y)>abs(height - abs(y - bean_y)):
+        d_y=abs(height - abs(y - bean_y))
+        if y>bean_y:
+            ind_y=bean_y+height
+        else:
+            ind_y=bean_y-height
+    else:
+        d_y=abs(y-bean_y)
+        ind_y=bean_y
+    return d_x+d_y,ind_x,ind_y
+
+
+
 
 def get_reward(info, snake_index, reward, score):
     snakes_position = np.array(info['snakes_position'], dtype=object)
@@ -196,10 +220,43 @@ def get_reward(info, snake_index, reward, score):
             step_reward[i] += 20
         else:
             self_head = np.array(snake_heads[i])
-            dists = [np.sqrt(np.sum(np.square(other_head - self_head))) for other_head in beans_position]
+            # dists = [np.sqrt(np.sum(np.square(other_head - self_head))) for other_head in beans_position]
+            dists = [manhattan(self_head[0], self_head[1], other_head[0], other_head[1], 20, 10)[0] for other_head in beans_position]
             step_reward[i] -= min(dists)
             if reward[i] < 0:
                 step_reward[i] -= 10
+
+    return step_reward
+
+
+def get_dense_reward(info, snake_index, reward, pre_beans, score):
+    snakes_position = np.array(info['snakes_position'], dtype=object)
+    beans_position = np.array(info['beans_position'], dtype=object)
+    pre_beans_position = np.array(pre_beans, dtype=object)
+    # print(beans_position.shape, pre_beans_position.shape, "hello")
+    snake_heads = [snake[0] for snake in snakes_position]
+    step_reward = np.zeros(len(snake_index))
+    for i in snake_index:
+        if score == 1:
+            step_reward[i] += 100
+        elif score == 2:
+            step_reward[i] -= 0
+        elif score == 3:
+            step_reward[i] += 10
+        elif score == 4:
+            step_reward[i] -= 0
+        # step_reward += len(snakes_position[i])-3
+        if reward[i] > 0:
+            step_reward[i] += 30
+        else:
+            self_head = np.array(snake_heads[i])
+            # dists = [np.sqrt(np.sum(np.square(other_head - self_head))) for other_head in beans_position]
+            dists = [manhattan(self_head[0], self_head[1], other_head[0], other_head[1], 20, 10)[0] for other_head in beans_position]
+            pre_dists = [manhattan(self_head[0], self_head[1], other_head[0], other_head[1], 20, 10)[0] for other_head in pre_beans_position]
+            step_reward[i] += (min(np.array(pre_dists))-min(np.array(dists))) * 5
+            
+            # if reward[i] < 0:
+            #     step_reward[i] -= reward[i] * 5
 
     return step_reward
 
@@ -210,6 +267,12 @@ def logits_random(act_dim, logits):
     num_agents = len(logits)
     actions = np.random.randint(act_dim, size=num_agents << 1)
     actions[:num_agents] = acs[:]
+    return actions
+
+def action_random(act_dim, logits):
+    num_agents = len(logits)
+    actions = np.random.randint(act_dim, size=num_agents << 1)
+    actions[:num_agents] = logits[:]
     return actions
 
 
@@ -239,6 +302,39 @@ def logits_greedy(state, logits, height, width):
 
     greedy_action = greedy_snake(state, beans, snakes, width, height, [3, 4, 5])
 
+    action_list = np.zeros(6)
+    action_list[:3] = logits_action
+    action_list[3:] = greedy_action
+
+    return action_list
+
+def action_greedy(state, logits, height, width):
+    state_copy = state.copy()
+    board_width = state_copy['board_width']
+    board_height = state_copy['board_height']
+    beans_positions = state_copy[1]
+    snakes_positions = {key: state_copy[key] for key in state_copy.keys() & {2, 3, 4, 5, 6, 7}}
+    snakes_positions_list = []
+    for key, value in snakes_positions.items():
+        snakes_positions_list.append(value)
+    snake_map = make_grid_map(board_width, board_height, beans_positions, snakes_positions)
+    state_ = np.array(snake_map)
+    state = np.squeeze(state_, axis=2)
+
+    beans = state_copy[1]
+    # beans = info['beans_position']
+    snakes_positions = {key: state_copy[key] for key in state_copy.keys() & {2, 3, 4, 5, 6, 7}}
+    snakes_positions_list = []
+    for key, value in snakes_positions.items():
+        snakes_positions_list.append(value)
+    snakes = snakes_positions_list
+
+    # logits = torch.Tensor(logits).to(device)
+    # logits_action = np.array([Categorical(out).sample().item() for out in logits])
+    logits_action = logits
+
+    greedy_action = greedy_snake(state, beans, snakes, width, height, [3, 4, 5])
+    # print(logits_action, greedy_action)
     action_list = np.zeros(6)
     action_list[:3] = logits_action
     action_list[3:] = greedy_action
@@ -294,6 +390,8 @@ def get_surrounding(state, width, height, x, y, agent, info):
     surrounding = list(surrounding.flatten().tolist())
 
     return surrounding
+
+
 
 
 def save_config(args, save_path):

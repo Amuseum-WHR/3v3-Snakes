@@ -174,12 +174,15 @@ class RLAgent(object):
 
     def select_action_to_env(self, obs, ctrl_index):
         logits = self.choose_action(obs)
+        # print(obs.shape, logits.shape)
         actions = logits2action(logits)
+        # print(actions)
+        # print(actions.shape)
         action_to_env = to_joint_action(actions, ctrl_index)
         return action_to_env
 
     def load_model(self, filename):
-        self.actor.load_state_dict(torch.load(filename))
+        self.actor.load_state_dict(torch.load(filename, map_location=torch.device('cpu')))
 
 
 def to_joint_action(action, ctrl_index):
@@ -198,8 +201,8 @@ def logits2action(logits):
 
 
 
-agent = RLAgent(26, 4, 3)
-actor_net = os.path.dirname(os.path.abspath(__file__)) + "/actor_2000.pth"
+agent = RLAgent(142, 4, 3)
+actor_net = os.path.dirname(os.path.abspath(__file__)) + "/actor_14000.pth"
 agent.load_model(actor_net)
 
 
@@ -210,6 +213,7 @@ def my_controller(observation_list, action_space_list, is_act_continuous):
     board_width = obs['board_width']
     board_height = obs['board_height']
     o_index = obs['controlled_snake_index']  # 2, 3, 4, 5, 6, 7 -> indexs = [0,1,2,3,4,5]
+    # print(o_index)
     o_indexs_min = 3 if o_index > 4 else 0
     indexs = [o_indexs_min, o_indexs_min+1, o_indexs_min+2]
     observation = get_observations(obs, indexs, obs_dim, height=board_height, width=board_width)

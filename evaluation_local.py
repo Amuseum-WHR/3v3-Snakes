@@ -2,6 +2,9 @@ import numpy as np
 import torch
 import random
 from agent.rl.submission import agent, get_observations
+import agent.rl2.submission as rl2
+import agent.greedy.submission as greedy
+import agent.QMIX.submission as QMIX
 from env.chooseenv import make
 from tabulate import tabulate
 import argparse
@@ -17,19 +20,31 @@ def get_actions(state, algo, indexs):
 
     # rl agent
     if algo == 'rl':
-        obs = get_observations(state, indexs, obs_dim=26, height=10, width=20)
+        obs = get_observations(state[0], indexs, obs_dim=26, height=10, width=20)
         logits = agent.choose_action(obs)
         logits = torch.Tensor(logits)
         actions = np.array([Categorical(out).sample().item() for out in logits])
+        # print(actions)
+    if algo == 'rl2':
+        obs = rl2.get_observations(state[0], indexs, obs_dim=142, height=10, width=20)
+        logits = rl2.agent.choose_action(obs)
+        logits = torch.Tensor(logits)
+        actions = np.array([Categorical(out).sample().item() for out in logits])
+    if algo == "greedy":
+        actions = greedy.evaluation(state)
+    if algo == "QMIX":
+        obs = QMIX.get_observations(state[0], indexs, obs_dim=142, height=10, width=20)
+        actions = QMIX.agent.choose_action(obs)
+
 
     return actions
 
 
 def get_join_actions(obs, algo_list):
-    obs_2_evaluation = obs[0]
+    obs_2_evaluation = obs.copy()
     indexs = [0,1,2,3,4,5]
-    first_action = get_actions(obs_2_evaluation, algo_list[0], indexs[:3])
-    second_action = get_actions(obs_2_evaluation, algo_list[1], indexs[3:])
+    first_action = get_actions(obs_2_evaluation[:3], algo_list[0], indexs[:3])
+    second_action = get_actions(obs_2_evaluation[3:], algo_list[1], indexs[3:])
     actions = np.zeros(6)
     actions[:3] = first_action[:]
     actions[3:] = second_action[:]
@@ -64,7 +79,8 @@ def run_game(env, algo_list, episode, verbose=False):
                     num_win[2] += 1
 
                 if not verbose:
-                    print('.', end='')
+                    # print('.', end='')
+                    print(i)
                     if i % 100 == 0 or i == episode:
                         print()
                 break
