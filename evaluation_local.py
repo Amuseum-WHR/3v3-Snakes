@@ -4,6 +4,7 @@ import random
 from agent.rl.submission import agent, get_observations
 import agent.rl2.submission as rl2
 import agent.greedy.submission as greedy
+import agent.greedy_old.submission as greedy_old
 import agent.QMIX.submission as QMIX
 from env.chooseenv import make
 from tabulate import tabulate
@@ -35,6 +36,8 @@ def get_actions(state, algo, indexs):
     if algo == "QMIX":
         obs = QMIX.get_observations(state[0], indexs, obs_dim=142, height=10, width=20)
         actions = QMIX.agent.choose_action(obs)
+    if algo == "greedy_old":
+        actions = greedy_old.evaluation(state)
 
 
     return actions
@@ -87,7 +90,7 @@ def run_game(env, algo_list, episode, verbose=False):
 
             state = next_state
             step += 1
-
+        print("episode_reward: ", episode_reward)
         total_reward += episode_reward
 
     # calculate results

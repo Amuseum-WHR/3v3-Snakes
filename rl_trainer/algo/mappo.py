@@ -10,7 +10,7 @@ import random
 base_dir = Path(__file__).resolve().parent.parent
 sys.path.append(str(base_dir))
 from replay_buffer import ReplayBuffer
-from common import soft_update, hard_update, device, mlp
+from common import soft_update, hard_update, device, mlp, greedy_main
 # from algo.network import Actor, Critic
 
 
@@ -36,6 +36,7 @@ class MAPPO:
         self.decay_speed = args.epsilon_speed
         self.output_activation = args.output_activation
         self.episode_length = args.episode_length
+        self.eps = 0
 
         # Initialise actor network and critic network with ξ and θ
         self.actor = Actor(obs_dim, act_dim, num_agent, args, self.output_activation).to(self.device)
@@ -62,10 +63,28 @@ class MAPPO:
         if p > self.eps_greedy or evaluation:
             obs = torch.Tensor([obs]).to(self.device)
             action = self.actor(obs).cpu().detach().numpy()[0]
+            action_dict = torch.distributions.Categorical(torch.Tensor(action))
+            action = action_dict.sample().numpy()
+            # print(action.shape)
         else:
-            action = self.random_action()
+            action = np.random.choice(np.array([0, 1, 2, 3]), size=(3))
 
         self.eps_greedy *= self.decay_speed
+        return action
+    
+    def greedy_init(self, obs, state, eps):
+        
+        if eps < 200:
+            action = np.array(greedy_main(state)).squeeze(1)
+        else:
+            obs = torch.Tensor([obs]).to(self.device)
+            action = self.actor(obs).cpu().detach().numpy()[0]
+            action_dict = torch.distributions.Categorical(torch.Tensor(action))
+            action = action_dict.sample().numpy()
+
+        # self.eps +=1
+        # print(self.eps)
+
         return action
 
     def random_action(self):
@@ -87,13 +106,13 @@ class MAPPO:
     def update(self, batch):
 
         # Sample a greedy_min mini-batch of M transitions from R
-        state_batch, action_batch, reward_batch, next_state_batch, done_batch = batch
+        state_batch, action_batch, reward_batch, next_state_batch, done_batch, global_state_batch = batch
 
         # print(state_batch.shape) # (batch_size, num_agent, obs_dim)
 
         state_batch = torch.Tensor(state_batch).reshape(self.batch_size, self.num_agent, -1).to(self.device)
         action_batch = torch.Tensor(action_batch).reshape(self.batch_size, self.num_agent, -1).to(self.device)
-        action_batch = torch.argmax(action_batch, dim=-1, keepdim=True).to(self.device)
+        # action_batch = torch.argmax(action_batch, dim=-1, keepdim=True).to(self.device)
         # print(action_batch.shape)
         reward_batch = torch.Tensor(reward_batch).reshape(self.batch_size, self.num_agent, 1).to(self.device)
         next_state_batch = torch.Tensor(next_state_batch).reshape(self.batch_size, self.num_agent, -1).to(self.device)
@@ -107,25 +126,20 @@ class MAPPO:
             td_target = reward_batch + self.gamma * self.critic(next_state_batch) * (1 - done_batch)
             td_delta = td_target - self.critic(state_batch)
             advantage = self.compute_advantage(td_delta)
-            # print(advantage.shape)
-            # print()
-            # print(action_batch)
-            # print(self.actor(state_batch).shape)
             old_prob = torch.clamp(self.actor(state_batch).gather(2, action_batch), 1e-10, 1.0)
-            # print(old_prob)
             old_log_prob = torch.log(old_prob).detach()
         
         actor_losses = []
         critic_losses = []
 
-        for _ in range(20):
-            batch_num = random.randint(0, self.batch_size // self.episode_length - 5) * self.episode_length
-            mini_state_batch = state_batch[batch_num : batch_num + self.episode_length*4]
-            mini_action_batch = action_batch[batch_num : batch_num + self.episode_length*4]
-            mini_old_log_prob = old_log_prob[batch_num : batch_num + self.episode_length*4]
-            mini_advantage = advantage[batch_num : batch_num + self.episode_length*4]
-            mini_td_target = td_target[batch_num : batch_num + self.episode_length*4]
-            mini_reward_batch = reward_batch[batch_num : batch_num + self.episode_length*4]
+        for _ in range(16):
+            index = np.random.choice(np.arange(self.batch_size), size=512, replace=False)
+            mini_state_batch = state_batch[index]
+            mini_action_batch = action_batch[index]
+            mini_old_log_prob = old_log_prob[index]
+            mini_advantage = advantage[index]
+            mini_td_target = td_target[index]
+            mini_reward_batch = reward_batch[index]
 
             # prob = torch.clamp(self.actor(state_batch).gather(1, action_batch), 1e-10, 1.0)
             # log_prob = torch.log(prob)
@@ -139,7 +153,7 @@ class MAPPO:
             prob = torch.clamp(self.actor(mini_state_batch).gather(2, mini_action_batch), 1e-10, 1.0)
             log_prob = torch.log(prob)
             ratio = torch.exp(log_prob - mini_old_log_prob)
-            print(torch.mean(ratio).item())
+            # print(torch.mean(ratio).item())
             surr1 = ratio * mini_advantage
             surr2 = torch.clamp(ratio, 1.0 - self.eps_clip, 1.0 + self.eps_clip) * mini_advantage
             actor_loss = torch.mean(-torch.min(surr1, surr2))
@@ -149,10 +163,10 @@ class MAPPO:
             # print("2")
             self.actor_optimizer.zero_grad()
             self.critic_optimizer.zero_grad()
-            print(actor_loss.item(), critic_loss.item(), 
-                  torch.max(mini_td_target).item(), torch.mean(mini_td_target).item(), 
-                  torch.max(self.critic(mini_state_batch)).item(), torch.mean(self.critic(mini_state_batch)).item(), 
-                  torch.max(mini_reward_batch).item(), torch.mean(mini_reward_batch).item())
+            # print(actor_loss.item(), critic_loss.item(), 
+            #       torch.max(mini_td_target).item(), torch.mean(mini_td_target).item(), 
+            #       torch.max(self.critic(mini_state_batch)).item(), torch.mean(self.critic(mini_state_batch)).item(), 
+            #       torch.max(mini_reward_batch).item(), torch.mean(mini_reward_batch).item())
             actor_losses.append(actor_loss.item())
             critic_losses.append(critic_loss.item())
             actor_loss.backward()
@@ -206,28 +220,14 @@ class Actor(nn.Module):
         self.args = args
 
         sizes_prev = [obs_dim, HIDDEN_SIZE]
-        middle_prev = [HIDDEN_SIZE, HIDDEN_SIZE]
-        sizes_post = [HIDDEN_SIZE << 1, HIDDEN_SIZE, act_dim]
 
-        self.prev_dense = mlp(sizes_prev)
-
-        if self.args.algo == "bicnet":
-            self.comm_net = LSTMNet(HIDDEN_SIZE, HIDDEN_SIZE)
-            sizes_post = [HIDDEN_SIZE << 1, HIDDEN_SIZE, act_dim]
-        elif self.args.algo == "mappo":
-            sizes_post = [HIDDEN_SIZE, HIDDEN_SIZE, act_dim]
+        sizes_post = [HIDDEN_SIZE, HIDDEN_SIZE, act_dim]
 
         self.prev_dense = mlp(sizes_prev)
         self.post_dense = mlp(sizes_post, output_activation=output_activation)
 
     def forward(self, obs_batch):
         out = self.prev_dense(obs_batch)
-        # print(out)
-
-        if self.args.algo == "bicnet":
-            out = self.comm_net(out)
-
-        # print(out)
 
         out = self.post_dense(out)
         return out
@@ -243,42 +243,23 @@ class Critic(nn.Module):
 
         self.args = args
 
-        sizes_prev = [obs_dim, HIDDEN_SIZE]
+        sizes_prev = [obs_dim*3, HIDDEN_SIZE]
 
-        if self.args.algo == "bicnet":
-            self.comm_net = LSTMNet(HIDDEN_SIZE, HIDDEN_SIZE)
-            sizes_post = [HIDDEN_SIZE << 1, HIDDEN_SIZE, 1]
-        elif self.args.algo == "mappo":
-            sizes_post = [HIDDEN_SIZE, HIDDEN_SIZE, 1]
+        sizes_post = [HIDDEN_SIZE, HIDDEN_SIZE, num_agents]
 
         self.prev_dense = mlp(sizes_prev)
         self.post_dense = mlp(sizes_post)
 
     def forward(self, obs_batch):
         # out = torch.cat((obs_batch, action_batch), dim=-1)
+        obs_batch = obs_batch.reshape(-1, self.obs_dim*self.num_agents)
         out = self.prev_dense(obs_batch)
 
         if self.args.algo == "bicnet":
             out = self.comm_net(out)
 
         out = self.post_dense(out)
+        out = out.reshape(-1, self.num_agents, 1)
         return out
 
-class LSTMNet(nn.Module):
-    def __init__(self,
-                 input_size,
-                 hidden_size,
-                 batch_first=True,
-                 bidirectional=True):
-        super(LSTMNet, self).__init__()
 
-        self.lstm = nn.LSTM(
-            input_size=input_size,
-            hidden_size=hidden_size,
-            batch_first=batch_first,
-            bidirectional=bidirectional
-        )
-
-    def forward(self, data, ):
-        output, (_, _) = self.lstm(data)
-        return output

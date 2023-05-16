@@ -2,12 +2,13 @@ import copy
 import math
 import numpy as np
 
-def my_controller(observation_list, action_space_list, is_act_continuous, eval=False):
+def my_controller(observation_list):
     joint_action = []
     obs = observation_list.copy()
     width = obs['board_width']
     height = obs['board_height']
     o_index = obs['controlled_snake_index']
+    # print(o_index)
     state = np.zeros((height, width))
     beans = obs[1]
     snakes = [[], []]
@@ -21,29 +22,27 @@ def my_controller(observation_list, action_space_list, is_act_continuous, eval=F
     for i in obs[o_index]:
         state[i[0], i[1]] = 2
     snakes[0] += obs[o_index]
-    # state[snakes[0][-1][0]][snakes[0][-1][1]]=0.
-    # state[snakes[1][-1][0]][snakes[1][-1][1]]=0.
-    # print(state)
+
     actions = compre_greedy_defense(state, beans, snakes, width, height, [0])
     # print(actions)
     # player = []
-    if not eval:
-        each = [0] * 4
-        each[actions[0]] = 1
-        # player.append(each)
-        # joint_action.append(player)
-        # return joint_action
-        # print(each)
-        return [each]
-    else:
-        return actions[0]
+    # if not eval:
+    #     each = [0] * 4
+    #     each[actions[0]] = 1
 
-def evaluation(states):
-    actions = []
-    for state in states:
-        actions.append(my_controller(state, [], [], eval=True))
+    #     return [each]
+    # else:
+    #     return actions[0]
     return actions
 
+
+def greedy_main(states):
+    # print(states)
+    actions = []
+    # print(states)
+    for state in states:
+        actions.append(my_controller(state))
+    return actions
 
 def get_surrounding(state, width, height, x, y):
     surrounding = [state[(y - 1) % height][x],  # up

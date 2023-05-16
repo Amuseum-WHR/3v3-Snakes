@@ -38,7 +38,7 @@ def main(args):
 
     act_dim = env.get_action_dim()
     print(f'action dimension: {act_dim}')
-    obs_dim = 142
+    obs_dim = 122
     print(f'observation dimension: {obs_dim}')
 
     torch.manual_seed(args.seed)
@@ -82,7 +82,8 @@ def main(args):
             
             logits = model.choose_action(obs)
             # print(logits.shape)
-            actions = action_greedy(state_to_training, logits, height, width)
+            # actions = action_greedy(state_to_training, logits, height, width)
+            actions = action_more_greedy(state[3:], logits, height, width)
             # actions = action_random(act_dim, logits)
 
             next_state, reward, done, _, info = env.step(env.encode(actions))
@@ -134,12 +135,18 @@ def main(args):
             all_obs_ep.append(all_obs)
             all_next_obs_ep.append(all_next_obs)
 
+            state = next_state
+
             obs = next_obs
             state_to_training = next_state_to_training
             beans = info['beans_position'].copy()
             step += 1
         
         print("eps", episode_reward)
+        episode_reward = np.array(episode_reward)
+        my_score, opp_score = np.sum(episode_reward[:3]),  np.sum(episode_reward[3:])
+        writer.add_scalar('my_score', my_score, episode)
+        writer.add_scalar('opp_score', opp_score, episode)
         
         model.replay_buffer.push(obs_ep, action_ep, reward_ep, next_obs_ep, done_ep, all_obs_ep, all_next_obs_ep)
         print("done")

@@ -7,6 +7,7 @@ from typing import Union
 from torch.distributions import Categorical
 import os
 import yaml
+from greedy_utils import greedy_main
 
 device = torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
 
@@ -139,6 +140,32 @@ def get_observations2(state, agents_index, obs_dim, height, width):
         snake_heads = np.delete(snake_heads, i, 0)
         observations[i][16:] = snake_heads.flatten()[:]
     return observations
+
+
+def get_grid_observations(state, agents_index, obs_dim, height, width):
+    state_copy = state.copy()
+    board_width = state_copy['board_width']
+    board_height = state_copy['board_height']
+    beans_positions = state_copy[1]
+    snakes_positions = {key: state_copy[key] for key in state_copy.keys() & {2, 3, 4, 5, 6, 7}}
+    snakes_positions_list = []
+    for key, value in snakes_positions.items():
+        snakes_positions_list.append(value)
+    snake_map = make_grid_map(board_width, board_height, beans_positions, snakes_positions)
+    state_ = np.array(snake_map)
+    # print(state_)
+    state_ = np.squeeze(state_, axis=2)
+
+    observations = np.zeros((3, obs_dim))
+    for i, element in enumerate(agents_index):
+        # # self head position
+        head_x = snakes_positions_list[element][0][1]
+        head_y = snakes_positions_list[element][0][0]
+        observations[i][:] = grid_observation(state_, width, height, head_x, head_y, element, state_copy)
+
+    return observations
+
+
 def get_observations(state, agents_index, obs_dim, height, width):
     state_copy = state.copy()
     board_width = state_copy['board_width']
@@ -161,19 +188,21 @@ def get_observations(state, agents_index, obs_dim, height, width):
         observations[i][:2] = snakes_positions_list[element][0][:]
 
         # head surroundings
+        # dim0: 10, dim1:20
         head_x = snakes_positions_list[element][0][1]
         head_y = snakes_positions_list[element][0][0]
 
+        # height = 10, width = 20
         head_surrounding = get_surrounding(state_, width, height, head_x, head_y, element, state_copy)
         observations[i][2:122] = head_surrounding[:]
 
         # beans positions
-        observations[i][122:132] = beans_position[:]
+        # observations[i][122:132] = beans_position[:]
 
-        # other snake positions
-        snake_heads = np.array([snake[0] for snake in snakes_position])
-        snake_heads = np.delete(snake_heads, i, 0)
-        observations[i][132:] = snake_heads.flatten()[:]
+        # # other snake positions
+        # snake_heads = np.array([snake[0] for snake in snakes_position])
+        # snake_heads = np.delete(snake_heads, i, 0)
+        # observations[i][132:] = snake_heads.flatten()[:]
     return observations
 
 def manhattan(x,y,bean_x,bean_y,width,height):
@@ -210,11 +239,11 @@ def get_reward(info, snake_index, reward, score):
         if score == 1:
             step_reward[i] += 50
         elif score == 2:
-            step_reward[i] -= 25
+            step_reward[i] -= 20
         elif score == 3:
-            step_reward[i] += 10
+            step_reward[i] += 5
         elif score == 4:
-            step_reward[i] -= 5
+            step_reward[i] -= 2
 
         if reward[i] > 0:
             step_reward[i] += 20
@@ -224,9 +253,10 @@ def get_reward(info, snake_index, reward, score):
             dists = [manhattan(self_head[0], self_head[1], other_head[0], other_head[1], 20, 10)[0] for other_head in beans_position]
             step_reward[i] -= min(dists)
             if reward[i] < 0:
-                step_reward[i] -= 10
+                step_reward[i] += reward[i] * 10
 
     return step_reward
+
 
 
 def get_dense_reward(info, snake_index, reward, pre_beans, score):
@@ -238,25 +268,37 @@ def get_dense_reward(info, snake_index, reward, pre_beans, score):
     step_reward = np.zeros(len(snake_index))
     for i in snake_index:
         if score == 1:
-            step_reward[i] += 100
+            step_reward[i] += 50
         elif score == 2:
-            step_reward[i] -= 0
+            step_reward[i] -= 20
         elif score == 3:
-            step_reward[i] += 10
+            step_reward[i] += 5
         elif score == 4:
-            step_reward[i] -= 0
+            step_reward[i] -= 2
         # step_reward += len(snakes_position[i])-3
         if reward[i] > 0:
-            step_reward[i] += 30
+            step_reward[i] += 20
         else:
             self_head = np.array(snake_heads[i])
             # dists = [np.sqrt(np.sum(np.square(other_head - self_head))) for other_head in beans_position]
-            dists = [manhattan(self_head[0], self_head[1], other_head[0], other_head[1], 20, 10)[0] for other_head in beans_position]
-            pre_dists = [manhattan(self_head[0], self_head[1], other_head[0], other_head[1], 20, 10)[0] for other_head in pre_beans_position]
+            dists = [manhattan(self_head[0], self_head[1], other_head[0], other_head[1], 10, 20)[0] for other_head in beans_position]
+            pre_dists = [manhattan(self_head[0], self_head[1], other_head[0], other_head[1], 10, 20)[0] for other_head in pre_beans_position]
             step_reward[i] += (min(np.array(pre_dists))-min(np.array(dists))) * 5
             
-            # if reward[i] < 0:
-            #     step_reward[i] -= reward[i] * 5
+            if reward[i] < 0:
+                step_reward[i] += reward[i] * 10
+    
+    # enemy punish and global reward
+    enemy_snake_index = [3, 4, 5]
+    enemy_reward = 0
+    for i in enemy_snake_index:
+        if reward[i] > 0:
+            enemy_reward += 20
+        elif reward[i] < 0:
+            enemy_reward += reward[i] * 10
+    delta_reward = sum([len(snake) for snake in snakes_position[:3]]) - sum([len(snake) for snake in snakes_position[3:]])
+    step_reward = step_reward + 0.1 * delta_reward - 0.1 * enemy_reward
+
 
     return step_reward
 
@@ -308,6 +350,35 @@ def logits_greedy(state, logits, height, width):
 
     return action_list
 
+
+def logits_more_greedy(state, logits, height, width):
+    greedy_action = greedy_main(state)
+
+    logits = torch.Tensor(logits).to(device)
+    logits_action = np.array([Categorical(out).sample().item() for out in logits])
+
+    action_list = np.zeros(6)
+    action_list[:3] = logits_action
+    action_list[3:] = greedy_action
+
+    return action_list
+
+
+def action_more_greedy(state, logits, height, width):
+
+    greedy_action = [i[0] for i in greedy_main(state)]
+    # print(greedy_main(state))
+
+    logits_action = logits
+    # print(greedy_action)
+
+    action_list = np.zeros(6)
+    action_list[:3] = logits_action
+    action_list[3:] = greedy_action
+
+    return action_list
+
+
 def action_greedy(state, logits, height, width):
     state_copy = state.copy()
     board_width = state_copy['board_width']
@@ -342,6 +413,24 @@ def action_greedy(state, logits, height, width):
     return action_list
 
 
+def get_global_state(state):
+    state_copy = state.copy()
+    width = state_copy['board_width']
+    height = state_copy['board_height']
+    global_state = np.zeros((height, width))
+    beans = state_copy [1]
+    for i in beans:
+        state[i[0], i[1]] = 1
+    for l in [2, 3, 4]:
+        for i in state_copy[l]:
+            state[i[0], i[1]] = 2
+    for i in [5, 6, 7]:
+        for i in state_copy[l]:
+            state[i[0], i[1]] = 3
+
+    return global_state
+
+
 def get_surrounding2(state, width, height, x, y):
     surrounding = [state[(y - 1) % height][x],  # up
                    state[(y + 1) % height][x],  # down
@@ -349,13 +438,49 @@ def get_surrounding2(state, width, height, x, y):
                    state[y][(x + 1) % width]]  # right
 
     return surrounding
-def get_surrounding(state, width, height, x, y, agent, info):
 
+def grid_observation(state, width, height, x, y, agent, info):
     state = state.copy()
-    state[state>=2] = 2 # 是身子
+    state[state>=2] = 2
+    indexs_min = 3 if agent > 2 else 0
+
+    our_index = [indexs_min, indexs_min + 1, indexs_min + 2]
 
     for l in [2, 3, 4, 5, 6, 7]:
         if agent + 2 == l:
+            state[info[l][0][0]][info[l][0][1]] = 2
+        elif agent in our_index:
+            state[info[l][0][0]][info[l][0][1]] = 3
+        else:
+            state[info[l][0][0]][info[l][0][1]] = 4
+
+    
+    one_hot_state = np.zeros((height, width, 5))
+    for i in range(5):
+        one_hot_state[:,:,i] = (state == i).astype(int)
+
+    # one_hot_state = one_hot_state.roll(-y, 0).roll(-x, 1).flatten()
+    one_hot_state = np.roll(one_hot_state, (-y, -x), (0, 1)).flatten()
+    return one_hot_state
+
+
+
+
+def get_surrounding(state, width, height, x, y, agent, info):
+
+    state = state.copy()
+    state[state>=2] = 2 
+
+    # 0：空地 1：豆子 2: 身子 3：队友的头 4：敌人的头
+
+    indexs_min = 3 if agent > 2 else 0
+
+    our_index = [indexs_min, indexs_min + 1, indexs_min + 2]
+
+    for l in [2, 3, 4, 5, 6, 7]:
+        if agent + 2 == l:
+            state[info[l][0][0]][info[l][0][1]] = 2
+        elif agent in our_index:
             state[info[l][0][0]][info[l][0][1]] = 3
         else:
             state[info[l][0][0]][info[l][0][1]] = 4
@@ -398,3 +523,8 @@ def save_config(args, save_path):
     file = open(os.path.join(str(save_path), 'config.yaml'), mode='w', encoding='utf-8')
     yaml.dump(vars(args), file)
     file.close()
+
+
+
+
+

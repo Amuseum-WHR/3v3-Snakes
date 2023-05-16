@@ -156,8 +156,6 @@ def main(args):
     while episode < args.max_episodes:
 
         res = pool.map(rollout, workers)
-
-        # print(1)
         obs_ep, action_ep, reward_ep, next_obs_ep, done_ep, global_state_ep, episode_reward = zip(*res)
 
         episode += 1
