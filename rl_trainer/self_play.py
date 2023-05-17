@@ -19,7 +19,7 @@ os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
 def rollout(worker):
     return worker.collect_data()
-    
+
 
 
 class RolloutWorker:
@@ -28,6 +28,7 @@ class RolloutWorker:
         self.env = make(args.game_name, conf=None)
         self.num_agents = self.env.n_player
         self.ctrl_agent_index = [0, 1, 2]
+        self.opp_agent_index = [3, 4, 5]
         self.ctrl_agent_num = len(self.ctrl_agent_index)
 
         self.width = self.env.board_width
@@ -49,6 +50,7 @@ class RolloutWorker:
         state = self.env.reset()
         state_to_training = state[0]
         obs = get_observations(state_to_training, self.ctrl_agent_index, self.obs_dim, self.height, self.width)
+        obs_opp = get_observations(state_to_training, self.opp_agent_index, self.obs_dim, self.height, self.width)
         beans = self.env.beans_position.copy()
         step = 0
         episode_reward = np.zeros(6)
@@ -59,15 +61,21 @@ class RolloutWorker:
             global_state_ep = get_global_state(state_to_training)
             # logits = self.model.choose_action(obs)
             logits = self.model.greedy_init(obs, state[:3], self.eps)
-            actions = action_more_greedy(state[3:], logits, self.height, self.width)
+
+            logits_opp = self.model.greedy_init(obs_opp, state[3:], self.eps)
+
+            actions = np.zeros(6)
+            actions[:3] = logits
+            actions[3:] = logits_opp
+            # actions = action_more_greedy(state[3:], logits, self.height, self.width)
             # actions = action_greedy(state_to_training, logits, height, width)
 
             next_state, reward, done, _, info = self.env.step(self.env.encode(actions))
             next_state_to_training = next_state[0]
             next_obs = get_observations(next_state_to_training, self.ctrl_agent_index, self.obs_dim, self.height, self.width)
-
+            next_obs_opp = get_observations(next_state_to_training, self.opp_agent_index, self.obs_dim, self.height, self.width)
             reward = np.array(reward)
-            
+
             episode_reward += reward
             if done:
                 if np.sum(episode_reward[:3]) > np.sum(episode_reward[3:]):
@@ -83,7 +91,7 @@ class RolloutWorker:
                     step_reward = get_dense_reward(info, self.ctrl_agent_index, reward, beans, score=4)
                 else:
                     step_reward = get_dense_reward(info, self.ctrl_agent_index, reward, beans, score=0)
-            
+
             done = np.array([done] * self.ctrl_agent_num)
 
             obs_ep.append(obs)
@@ -93,6 +101,7 @@ class RolloutWorker:
             done_ep.append(done)
 
             obs = next_obs
+            obs_opp = next_obs_opp
             state_to_training = next_state_to_training
             state = next_state
             beans = info['beans_position'].copy()
@@ -101,7 +110,7 @@ class RolloutWorker:
 
         # print("eps", episode_reward)
         return obs_ep, action_ep, reward_ep, next_obs_ep, done_ep, global_state_ep, episode_reward
-    
+
     def update_model(self, model):
         self.model.actor.load_state_dict(model.actor.state_dict())
         self.model.critic.load_state_dict(model.critic.state_dict())
@@ -134,7 +143,7 @@ def main(args):
     print(f'action dimension: {act_dim}')
     obs_dim = 122 # 142 # 26
     print(f'observation dimension: {obs_dim}')
-    
+
     torch.manual_seed(args.seed)
     # 定义保存路径
     run_dir, log_dir = make_logpath(args.game_name, args.algo)
@@ -179,14 +188,14 @@ def main(args):
 
         if episode % 100 == 0:
             model.save_model(run_dir, episode)
-        
+
         eps += 1
 
         # env.reset()
 
-        
 
-        
+
+
 
 
 if __name__ == '__main__':
