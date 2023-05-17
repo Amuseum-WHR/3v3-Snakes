@@ -6,6 +6,7 @@ import agent.rl2.submission as rl2
 import agent.greedy.submission as greedy
 import agent.greedy_old.submission as greedy_old
 import agent.QMIX.submission as QMIX
+import agent.mappo.submission as mappo
 from env.chooseenv import make
 from tabulate import tabulate
 import argparse
@@ -34,10 +35,15 @@ def get_actions(state, algo, indexs):
     if algo == "greedy":
         actions = greedy.evaluation(state)
     if algo == "QMIX":
-        obs = QMIX.get_observations(state[0], indexs, obs_dim=142, height=10, width=20)
+        obs = QMIX.get_observations(state[0], indexs, obs_dim=122, height=10, width=20)
         actions = QMIX.agent.choose_action(obs)
     if algo == "greedy_old":
         actions = greedy_old.evaluation(state)
+    if algo == "mappo":
+        obs = mappo.get_observations(state[0], indexs, obs_dim=122, height=10, width=20)
+        logits = mappo.agent.choose_action(obs)
+        logits = torch.Tensor(logits)
+        actions = np.array([Categorical(out).sample().item() for out in logits])
 
 
     return actions
@@ -65,6 +71,8 @@ def run_game(env, algo_list, episode, verbose=False):
         state = env.reset()
 
         step = 0
+
+        # QMIX.agent.init_hidden(1)
 
         while True:
             joint_action = get_join_actions(state, algo_list)

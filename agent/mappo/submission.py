@@ -124,13 +124,6 @@ def get_observations(state, agents_index, obs_dim, height, width):
         head_surrounding = get_surrounding(state_, width, height, head_x, head_y, element, state_copy)
         observations[i][2:122] = head_surrounding[:]
 
-        # beans positions
-        observations[i][122:132] = beans_position[:]
-
-        # other snake positions
-        snake_heads = np.array([snake[0] for snake in snakes_position])
-        snake_heads = np.delete(snake_heads, i, 0)
-        observations[i][132:] = snake_heads.flatten()[:]
     return observations
 
 
@@ -201,13 +194,13 @@ def logits2action(logits):
 
 
 
-agent = RLAgent(142, 4, 3)
-actor_net = os.path.dirname(os.path.abspath(__file__)) + "/actor_14000.pth"
+agent = RLAgent(122, 4, 3)
+actor_net = os.path.dirname(os.path.abspath(__file__)) + "/actor_30000.pth"
 agent.load_model(actor_net)
 
 
 def my_controller(observation_list, action_space_list, is_act_continuous):
-    obs_dim = 142
+    obs_dim = 122
     obs = observation_list.copy()
     # print(obs)
     board_width = obs['board_width']

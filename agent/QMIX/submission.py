@@ -43,10 +43,18 @@ def mlp(sizes,
 def get_surrounding(state, width, height, x, y, agent, info):
 
     state = state.copy()
-    state[state>=2] = 2 # 是身子
+    state[state>=2] = 2 
+
+    # 0：空地 1：豆子 2: 身子 3：队友的头 4：敌人的头
+
+    indexs_min = 3 if agent > 2 else 0
+
+    our_index = [indexs_min, indexs_min + 1, indexs_min + 2]
 
     for l in [2, 3, 4, 5, 6, 7]:
         if agent + 2 == l:
+            state[info[l][0][0]][info[l][0][1]] = 2
+        elif agent in our_index:
             state[info[l][0][0]][info[l][0][1]] = 3
         else:
             state[info[l][0][0]][info[l][0][1]] = 4
@@ -81,6 +89,7 @@ def get_surrounding(state, width, height, x, y, agent, info):
     surrounding = list(surrounding.flatten().tolist())
 
     return surrounding
+
 
 
 def make_grid_map(board_width, board_height, beans_positions:list, snakes_positions:dict):
@@ -127,12 +136,12 @@ def get_observations(state, agents_index, obs_dim, height, width):
         observations[i][2:122] = head_surrounding[:]
 
         # beans positions
-        observations[i][122:132] = beans_position[:]
+        # observations[i][122:132] = beans_position[:]
 
         # other snake positions
-        snake_heads = np.array([snake[0] for snake in snakes_position])
-        snake_heads = np.delete(snake_heads, i, 0)
-        observations[i][132:] = snake_heads.flatten()[:]
+        # snake_heads = np.array([snake[0] for snake in snakes_position])
+        # snake_heads = np.delete(snake_heads, i, 0)
+        # observations[i][132:] = snake_heads.flatten()[:]
     return observations
 
 
@@ -164,6 +173,7 @@ class RLAgent(object):
         self.output_activation = 'softmax'
         self.actor = DRQN(obs_dim, act_dim, num_agent, self.output_activation).to(self.device)
         self.hidden = None
+        self.init_hidden(1)
 
     def choose_action(self, obs):
 
@@ -185,7 +195,11 @@ class RLAgent(object):
         return action_to_env
 
     def load_model(self, filename):
-        self.actor.load_state_dict(torch.load(filename))
+        self.actor.load_state_dict(torch.load(filename, map_location=torch.device('cpu')))
+
+    def init_hidden(self, batch_size):
+        self.eval_hidden = torch.zeros((batch_size, self.num_agent, DRQN_HIDDEN_SIZE)).to(device)
+        self.target_hidden = torch.zeros((batch_size, self.num_agent, DRQN_HIDDEN_SIZE)).to(device)
 
 
 def to_joint_action(action, ctrl_index):
@@ -204,14 +218,14 @@ def logits2action(logits):
 
 
 
-agent = RLAgent(142, 4, 3)
-actor_net = os.path.dirname(os.path.abspath(__file__)) + "/drqn_50000.pth"
+agent = RLAgent(122, 4, 3)
+actor_net = os.path.dirname(os.path.abspath(__file__)) + "/drqn_30000.pth"
 agent.load_model(actor_net)
 agent.hidden = torch.zeros(3, DRQN_HIDDEN_SIZE).to(device)
 
 
 def my_controller(observation_list, action_space_list, is_act_continuous):
-    obs_dim = 142
+    obs_dim = 122
     obs = observation_list.copy()
     board_width = obs['board_width']
     board_height = obs['board_height']
