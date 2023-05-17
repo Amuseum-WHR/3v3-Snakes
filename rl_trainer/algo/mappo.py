@@ -71,16 +71,21 @@ class MAPPO:
 
         self.eps_greedy *= self.decay_speed
         return action
-    
+
     def greedy_init(self, obs, state, eps):
-        
-        if eps < 200:
+
+        if eps < 0:
             action = np.array(greedy_main(state)).squeeze(1)
         else:
             obs = torch.Tensor([obs]).to(self.device)
             action = self.actor(obs).cpu().detach().numpy()[0]
             action_dict = torch.distributions.Categorical(torch.Tensor(action))
             action = action_dict.sample().numpy()
+
+    # def predict_action(self, obs):
+    #     obs = torch.Tensor([obs]).to(self.device)
+    #     action = self.actor(obs).cpu().detach().numpy()[0]
+    #     action = torch.argmax(action)
 
         # self.eps +=1
         # print(self.eps)
@@ -91,7 +96,7 @@ class MAPPO:
         if self.output_activation == 'tanh':
             return np.random.uniform(low=-1, high=1, size=(self.num_agent, self.act_dim))
         return np.random.uniform(low=0, high=1, size=(self.num_agent, self.act_dim))
-    
+
     def compute_advantage(self, td_delta):
         td_delta = td_delta.cpu().detach().numpy()
         advantage_list = []
@@ -128,7 +133,7 @@ class MAPPO:
             advantage = self.compute_advantage(td_delta)
             old_prob = torch.clamp(self.actor(state_batch).gather(2, action_batch), 1e-10, 1.0)
             old_log_prob = torch.log(old_prob).detach()
-        
+
         actor_losses = []
         critic_losses = []
 
@@ -163,9 +168,9 @@ class MAPPO:
             # print("2")
             self.actor_optimizer.zero_grad()
             self.critic_optimizer.zero_grad()
-            # print(actor_loss.item(), critic_loss.item(), 
-            #       torch.max(mini_td_target).item(), torch.mean(mini_td_target).item(), 
-            #       torch.max(self.critic(mini_state_batch)).item(), torch.mean(self.critic(mini_state_batch)).item(), 
+            # print(actor_loss.item(), critic_loss.item(),
+            #       torch.max(mini_td_target).item(), torch.mean(mini_td_target).item(),
+            #       torch.max(self.critic(mini_state_batch)).item(), torch.mean(self.critic(mini_state_batch)).item(),
             #       torch.max(mini_reward_batch).item(), torch.mean(mini_reward_batch).item())
             actor_losses.append(actor_loss.item())
             critic_losses.append(critic_loss.item())
